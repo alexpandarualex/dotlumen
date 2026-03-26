@@ -1,0 +1,5 @@
+{
+  "name": "Visionary Research - dotLumen",
+  "description": "AI Agents Playbook for dotLumen.com - 42 specialized AI agents for assistive technology research and business development.",
+  "requestFramePermissions": ["microphone"]
+}

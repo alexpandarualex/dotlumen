@@ -1,0 +1,80 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "User account information and roles.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Firebase Auth UID." },
+        "email": { "type": "string", "format": "email" },
+        "displayName": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "user"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "role"]
+    },
+    "ChatMessage": {
+      "title": "Chat Message",
+      "description": "A single message in a chat session with an agent.",
+      "type": "object",
+      "properties": {
+        "agentId": { "type": "string" },
+        "userId": { "type": "string" },
+        "role": { "type": "string", "enum": ["user", "assistant", "system"] },
+        "content": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "files": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": { "type": "string" },
+              "type": { "type": "string" },
+              "size": { "type": "string" }
+            }
+          }
+        }
+      },
+      "required": ["agentId", "userId", "role", "content", "timestamp"]
+    },
+    "ResearchReport": {
+      "title": "Research Report",
+      "description": "A generated research report or analysis.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "agentId": { "type": "string" },
+        "agentName": { "type": "string" },
+        "userId": { "type": "string" },
+        "content": { "type": "string" },
+        "summary": { "type": "string" },
+        "type": { "type": "string", "enum": ["Analysis", "Market", "Technical", "Legal"] },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "metrics": {
+          "type": "object",
+          "properties": {
+            "relevance": { "type": "number" },
+            "accuracy": { "type": "number" },
+            "depth": { "type": "number" }
+          }
+        }
+      },
+      "required": ["title", "agentId", "userId", "content", "timestamp"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profiles and permissions."
+    },
+    "/chat_history/{messageId}": {
+      "schema": "ChatMessage",
+      "description": "History of all agent interactions."
+    },
+    "/reports/{reportId}": {
+      "schema": "ResearchReport",
+      "description": "Archived research reports and analyses."
+    }
+  }
+}

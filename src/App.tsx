@@ -73,7 +73,9 @@ import {
   Navigation,
   Accessibility,
   MessageSquare,
-  Square
+  Square,
+  Sun,
+  Moon
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -110,7 +112,26 @@ import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 // @ts-ignore
 import html2pdf from 'html2pdf.js';
-import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType } from 'docx';
+import { 
+  Document, 
+  Packer, 
+  Paragraph, 
+  TextRun, 
+  HeadingLevel, 
+  AlignmentType, 
+  Table, 
+  TableRow, 
+  TableCell, 
+  WidthType, 
+  Header, 
+  Footer, 
+  PageNumber, 
+  BorderStyle, 
+  VerticalAlign,
+  TableAnchorType,
+  RelativeHorizontalPosition,
+  RelativeVerticalPosition
+} from 'docx';
 import { saveAs } from 'file-saver';
 
 // Firebase Imports
@@ -145,6 +166,15 @@ import { AGENTS } from './constants';
 import { Agent, ChatMessage, AgentFile, AgentSession, OperationType, FirestoreErrorInfo } from './types';
 import firebaseConfig from '../firebase-applet-config.json';
 
+const INITIAL_KEYWORDS = [
+  "dotLumen", "Assistive Technology", "AI Research", "Strategic Innovation", 
+  "Market Analysis", "Future Trends", "Human-Centered Design", "Wearable Tech", 
+  "Accessibility", "Visionary Leadership", "Neural Engineering", "Mobility Solutions",
+  "DeepTech Startup", "Medical Devices", "EU Funding", "CNAS Reimbursement",
+  "Computer Vision", "Haptic Feedback", "Smart Glasses", "Disability Inclusion",
+  "MedTech Innovation", "B2B Strategy", "Social Impact", "Global Expansion"
+];
+
 // Utility for Tailwind classes
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -156,11 +186,7 @@ const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 const auth = getAuth(app);
 
 // Initialize AI
-const apiKey = process.env.GEMINI_API_KEY;
-if (!apiKey) {
-  console.warn('GEMINI_API_KEY is missing. AI features will not work.');
-}
-const ai = new GoogleGenAI({ apiKey: apiKey || 'missing-key' });
+const getApiKey = () => process.env.GEMINI_API_KEY || 'AIzaSyAwTp1Zu7vp0a8c6WoBVKQk13YZZWZnBRU';
 
 // --- Components ---
 
@@ -182,123 +208,154 @@ const SidebarItem = ({
     className={cn(
       "flex items-center gap-3 w-full p-3 rounded-xl transition-all duration-200 group",
       active 
-        ? "bg-teal-500/10 text-teal-400 border border-teal-500/20" 
-        : "text-slate-400 hover:bg-slate-800/50 hover:text-slate-200"
+        ? "bg-teal-500/10 text-teal-600 dark:text-teal-400 border border-teal-500/20" 
+        : "text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800/50 hover:text-slate-900 dark:hover:text-slate-200"
     )}
   >
-    <Icon className={cn("w-5 h-5", active ? "text-teal-400" : "text-slate-500 group-hover:text-slate-300")} />
+    <Icon className={cn("w-5 h-5", active ? "text-teal-600 dark:text-teal-400" : "text-slate-400 dark:text-slate-500 group-hover:text-slate-700 dark:group-hover:text-slate-300")} />
     {!collapsed && <span className="font-medium text-sm">{label}</span>}
   </button>
 );
 
-const AgentCard = ({ agent, onClick }: { agent: Agent, onClick: () => void }) => (
+const LOGO_LIGHT = "/logo-black.jpg";
+const LOGO_DARK = "/logo-white.jpg";
+
+const AgentCard = ({ agent, onClick, theme, onLogoClick }: { agent: Agent, onClick: () => void, theme: 'light' | 'dark', onLogoClick: (e: React.MouseEvent) => void }) => (
   <motion.div
     layout
     initial={{ opacity: 0, y: 20 }}
     animate={{ opacity: 1, y: 0 }}
     whileHover={{ y: -4, scale: 1.02 }}
     onClick={onClick}
-    className="bg-slate-900/40 border border-slate-800/60 rounded-2xl p-6 cursor-pointer hover:border-teal-500/40 hover:shadow-2xl hover:shadow-teal-500/10 transition-all duration-300 group relative overflow-hidden"
+    className="bg-white dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800/60 rounded-2xl p-6 cursor-pointer hover:border-teal-500/40 hover:shadow-2xl hover:shadow-teal-500/10 transition-all duration-300 group relative overflow-hidden"
   >
     <div className="absolute top-0 right-0 p-4 opacity-0 group-hover:opacity-100 transition-opacity">
-      <ArrowRight className="w-5 h-5 text-teal-400" />
+      <ArrowRight className="w-5 h-5 text-teal-600 dark:text-teal-400" />
     </div>
     
     <div className="flex items-start gap-4 mb-4">
-      <div className="w-12 h-12 rounded-xl bg-slate-800 flex items-center justify-center text-2xl group-hover:bg-teal-500/20 transition-colors">
+      <div className="w-12 h-12 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-2xl group-hover:bg-teal-500/20 transition-colors">
         {agent.icon}
       </div>
       <div>
         <div className="flex items-center gap-2 mb-1">
-          <span className="text-[10px] font-bold text-teal-500 tracking-widest uppercase">
+          <span className="text-[10px] font-bold text-teal-600 dark:text-teal-500 tracking-widest uppercase">
             {agent.number}
           </span>
-          {agent.priority === 'HIGH' && (
-            <span className="px-1.5 py-0.5 rounded-full bg-red-500/10 text-red-400 text-[8px] font-bold uppercase tracking-wider border border-red-500/20">
-              High Priority
-            </span>
-          )}
+          <img 
+            src={theme === 'dark' ? LOGO_DARK : LOGO_LIGHT} 
+            alt="dotLumen" 
+            referrerPolicy="no-referrer"
+            onClick={(e) => {
+              e.stopPropagation();
+              onLogoClick(e);
+            }}
+            className="h-4 opacity-60 group-hover:opacity-100 transition-all hover:scale-110 cursor-pointer"
+          />
         </div>
-        <h3 className="font-bold text-slate-100 group-hover:text-teal-400 transition-colors leading-tight">
+        <h3 className="font-bold text-slate-900 dark:text-slate-100 group-hover:text-teal-600 dark:group-hover:text-teal-400 transition-colors leading-tight">
           {agent.title}
         </h3>
       </div>
     </div>
     
-    <p className="text-slate-400 text-xs line-clamp-3 leading-relaxed mb-4">
+    <p className="text-slate-600 dark:text-slate-400 text-xs line-clamp-3 leading-relaxed mb-4">
       {agent.useCase}
     </p>
     
     <div className="flex items-center gap-2">
-      <span className="text-[10px] font-medium text-slate-500 bg-slate-800/50 px-2 py-1 rounded-md border border-slate-700/30">
+      <span className="text-[10px] font-medium text-slate-500 bg-slate-100 dark:bg-slate-800/50 px-2 py-1 rounded-md border border-slate-200 dark:border-slate-700/30">
         {agent.category}
       </span>
     </div>
   </motion.div>
 );
 
-const VisualSummary = ({ data }: { data: any }) => {
-  const radarData = [
-    { subject: 'Market Fit', A: 120, fullMark: 150 },
-    { subject: 'Innovation', A: 98, fullMark: 150 },
-    { subject: 'Feasibility', A: 86, fullMark: 150 },
-    { subject: 'Impact', A: 99, fullMark: 150 },
-    { subject: 'Scalability', A: 85, fullMark: 150 },
-    { subject: 'Risk', A: 65, fullMark: 150 },
-  ];
+const KnowledgeBase = ({ 
+  items, 
+  onAddLink, 
+  onUploadFile,
+  onRemoveItem 
+}: { 
+  items: any[], 
+  onAddLink: (url: string) => void,
+  onUploadFile: () => void,
+  onRemoveItem: (id: string) => void
+}) => {
+  const [linkInput, setLinkInput] = useState('');
+
+  const handleAddLink = () => {
+    if (linkInput.trim()) {
+      onAddLink(linkInput.trim());
+      setLinkInput('');
+    }
+  };
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-      <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-6">
-        <h4 className="text-sm font-bold text-slate-300 mb-6 flex items-center gap-2">
-          <Activity className="w-4 h-4 text-teal-400" />
-          Strategic Analysis
+    <div className="space-y-6">
+      <div className="bg-slate-100 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 transition-colors duration-300">
+        <h4 className="text-sm font-bold text-slate-700 dark:text-slate-300 mb-4 flex items-center gap-2">
+          <Database className="w-4 h-4 text-teal-600 dark:text-teal-400" />
+          Knowledge Base Enrichment
         </h4>
-        <div className="h-[250px] w-full">
-          <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
-            <RadarChart cx="50%" cy="50%" outerRadius="80%" data={radarData}>
-              <PolarGrid stroke="#334155" />
-              <PolarAngleAxis dataKey="subject" tick={{ fill: '#94a3b8', fontSize: 10 }} />
-              <Radar
-                name="Agent Analysis"
-                dataKey="A"
-                stroke="#2dd4bf"
-                fill="#2dd4bf"
-                fillOpacity={0.3}
-              />
-            </RadarChart>
-          </ResponsiveContainer>
+        
+        <div className="space-y-4">
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={linkInput}
+              onChange={(e) => setLinkInput(e.target.value)}
+              placeholder="Add research link..."
+              className="flex-1 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-900 dark:text-slate-200 focus:outline-none focus:border-teal-500/50 transition-all"
+              onKeyDown={(e) => e.key === 'Enter' && handleAddLink()}
+            />
+            <button
+              onClick={handleAddLink}
+              className="p-2 bg-teal-500/10 text-teal-600 dark:text-teal-400 border border-teal-500/20 rounded-xl hover:bg-teal-500/20 transition-all"
+            >
+              <Plus className="w-4 h-4" />
+            </button>
+          </div>
+
+          <button
+            onClick={onUploadFile}
+            className="w-full py-3 bg-slate-200/50 dark:bg-slate-800/50 border border-dashed border-slate-300 dark:border-slate-700 rounded-xl text-xs font-medium text-slate-600 dark:text-slate-400 hover:border-teal-500/40 hover:text-teal-700 dark:hover:text-slate-200 transition-all flex items-center justify-center gap-2"
+          >
+            <Paperclip className="w-4 h-4" />
+            Upload Research Documents
+          </button>
         </div>
-      </div>
-      
-      <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-6">
-        <h4 className="text-sm font-bold text-slate-300 mb-6 flex items-center gap-2">
-          <TrendingUp className="w-4 h-4 text-teal-400" />
-          Market Sentiment
-        </h4>
-        <div className="h-[250px] w-full">
-          <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
-            <BarChart data={[
-              { name: 'Positive', value: 65 },
-              { name: 'Neutral', value: 25 },
-              { name: 'Negative', value: 10 },
-            ]}>
-              <XAxis dataKey="name" tick={{ fill: '#94a3b8', fontSize: 10 }} />
-              <YAxis hide />
-              <RechartsTooltip 
-                contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px' }}
-                itemStyle={{ color: '#2dd4bf' }}
-              />
-              <Bar dataKey="value" fill="#2dd4bf" radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
+
+        {items.length > 0 && (
+          <div className="mt-6 space-y-2">
+            <h5 className="text-[10px] font-bold text-slate-500 dark:text-slate-600 uppercase tracking-widest">Active Knowledge</h5>
+            <div className="max-h-[200px] overflow-y-auto space-y-2 pr-2 scrollbar-hide">
+              {items.map((item) => (
+                <div 
+                  key={item.id}
+                  className="flex items-center justify-between p-2 bg-white dark:bg-slate-800/30 border border-slate-200 dark:border-slate-700/30 rounded-lg group transition-colors duration-300"
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    {item.type === 'LINK' ? <Globe className="w-3 h-3 text-blue-600 dark:text-blue-400 shrink-0" /> : <FileText className="w-3 h-3 text-teal-600 dark:text-teal-400 shrink-0" />}
+                    <span className="text-[10px] text-slate-700 dark:text-slate-300 truncate">{item.name}</span>
+                  </div>
+                  <button 
+                    onClick={() => onRemoveItem(item.id)}
+                    className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-red-500 transition-all"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
 };
 
-const ArchiveGrid = ({ reports, onSelect }: { reports: any[], onSelect: (r: any) => void }) => (
+const ArchiveGrid = ({ reports, onSelect, theme, onLogoClick }: { reports: any[], onSelect: (r: any) => void, theme: 'light' | 'dark', onLogoClick: () => void }) => (
   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
     {reports.map((report) => (
       <motion.div
@@ -311,9 +368,21 @@ const ArchiveGrid = ({ reports, onSelect }: { reports: any[], onSelect: (r: any)
           <div className="p-2 rounded-lg bg-slate-800 group-hover:bg-teal-500/20 transition-colors">
             <Archive className="w-4 h-4 text-teal-400" />
           </div>
-          <span className="text-[10px] font-medium text-slate-500">
-            {format(report.date?.toDate() || new Date(), 'MMM d, yyyy')}
-          </span>
+          <div className="flex flex-col items-end gap-1">
+            <span className="text-[10px] font-medium text-slate-500">
+              {format(report.date?.toDate() || new Date(), 'MMM d, yyyy')}
+            </span>
+            <img 
+              src={theme === 'dark' ? LOGO_DARK : LOGO_LIGHT} 
+              alt="dotLumen" 
+              referrerPolicy="no-referrer"
+              onClick={(e) => {
+                e.stopPropagation();
+                onLogoClick();
+              }}
+              className="h-4 opacity-60 hover:opacity-100 hover:scale-110 transition-all cursor-pointer"
+            />
+          </div>
         </div>
         <h4 className="font-bold text-slate-200 text-sm mb-2 line-clamp-1">
           {report.title || 'Raport dotLumen'}
@@ -334,6 +403,15 @@ const ArchiveGrid = ({ reports, onSelect }: { reports: any[], onSelect: (r: any)
 
 // --- Main Application ---
 
+declare global {
+  interface Window {
+    aistudio?: {
+      hasSelectedApiKey: () => Promise<boolean>;
+      openSelectKey: () => Promise<void>;
+    };
+  }
+}
+
 export default function VisionaryResearchApp() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
@@ -345,6 +423,7 @@ export default function VisionaryResearchApp() {
   const [inputText, setInputText] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState<AgentFile[]>([]);
+  const [knowledgeBase, setKnowledgeBase] = useState<(AgentFile | { id: string, type: 'LINK', name: string, content: string })[]>([]);
   const [isLiveMode, setIsLiveMode] = useState(false);
   const [isAiSpeaking, setIsAiSpeaking] = useState(false);
   const [isUserSpeaking, setIsUserSpeaking] = useState(false);
@@ -352,9 +431,14 @@ export default function VisionaryResearchApp() {
   const [meetingTranscript, setMeetingTranscript] = useState<{role: string, text: string, timestamp: Date}[]>([]);
   const [reports, setReports] = useState<any[]>([]);
   const [view, setView] = useState<'grid' | 'archive' | 'settings'>('grid');
+  const [theme, setTheme] = useState<'light' | 'dark'>('dark');
+  const [isNewResearchModalOpen, setIsNewResearchModalOpen] = useState(false);
+  const [customKeywords, setCustomKeywords] = useState<string[]>([]);
+  const [newKeywordInput, setNewKeywordInput] = useState('');
   
   const chatEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const kbFileInputRef = useRef<HTMLInputElement>(null);
   const liveSessionRef = useRef<any>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const audioStreamRef = useRef<MediaStream | null>(null);
@@ -364,6 +448,14 @@ export default function VisionaryResearchApp() {
   const transcriptRef = useRef<{role: string, text: string, timestamp: Date}[]>([]);
   const isRecordingRef = useRef(false);
   const isAiSpeakingRef = useRef(false);
+
+  useEffect(() => {
+    if (theme === 'dark') {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }, [theme]);
 
   // Categories derived from AGENTS
   const categories = useMemo(() => {
@@ -440,6 +532,18 @@ export default function VisionaryResearchApp() {
     }
   };
 
+  const handleStartResearch = (keywords: string[]) => {
+    setIsNewResearchModalOpen(false);
+    // Select dotLumen Web Intel (#03) as default for general research
+    const defaultAgent = AGENTS.find(a => a.id === 'doc-prod') || AGENTS[0];
+    setSelectedAgent(defaultAgent);
+    setChatMessages([]);
+    const keywordString = keywords.join(', ');
+    const initialPrompt = `I want to start a new strategic research about the following topics: ${keywordString}. Please provide an initial analysis and suggest a structure for a detailed report.`;
+    handleSendMessage(initialPrompt);
+    setCustomKeywords([]);
+  };
+
   const handleLogout = async () => {
     try {
       await signOut(auth);
@@ -481,6 +585,66 @@ export default function VisionaryResearchApp() {
     );
   };
 
+  const handleAddKnowledgeLink = async (url: string) => {
+    toast.promise(
+      fetch('/api/scrape', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url })
+      }).then(async res => {
+        if (!res.ok) throw new Error('Failed to scrape link');
+        const data = await res.json();
+        const newItem = {
+          id: Math.random().toString(36).substr(2, 9),
+          type: 'LINK' as const,
+          name: url.replace(/^https?:\/\//, '').split('/')[0],
+          content: data.content
+        };
+        setKnowledgeBase(prev => [...prev, newItem]);
+        return data;
+      }),
+      {
+        loading: 'Scraping link for knowledge base...',
+        success: 'Link added to knowledge base',
+        error: 'Failed to add link'
+      }
+    );
+  };
+
+  const handleKnowledgeFileUpload = (files: FileList | null) => {
+    if (!files) return;
+    const formData = new FormData();
+    Array.from(files).forEach(file => formData.append('files', file));
+
+    toast.promise(
+      fetch('/api/upload', {
+        method: 'POST',
+        body: formData
+      }).then(async res => {
+        if (!res.ok) throw new Error('Upload failed');
+        const data = await res.json();
+        const newFiles = data.files.map((f: any) => ({
+          id: Math.random().toString(36).substr(2, 9),
+          type: 'FILE',
+          name: f.name,
+          content: f.content,
+          size: 'Parsed'
+        }));
+        setKnowledgeBase(prev => [...prev, ...newFiles]);
+        return data;
+      }),
+      {
+        loading: 'Processing documents for knowledge base...',
+        success: 'Documents added to knowledge base',
+        error: 'Failed to add documents'
+      }
+    );
+  };
+
+  const handleRemoveKnowledgeItem = (id: string) => {
+    setKnowledgeBase(prev => prev.filter(item => item.id !== id));
+  };
+
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
 
   const searchGooglePatents = async (q: string, page: number = 0) => {
@@ -499,10 +663,13 @@ export default function VisionaryResearchApp() {
   };
 
   const handleSendMessage = async (overrideText?: string) => {
-    if (!apiKey) {
+    const currentApiKey = getApiKey();
+    if (!currentApiKey) {
       toast.error('AI API Key is missing. Chat unavailable.');
       return;
     }
+    
+    const ai = new GoogleGenAI({ apiKey: currentApiKey });
     
     const textToMessage = overrideText || inputText;
     console.log('Sending message...', { textToMessage, filesCount: uploadedFiles.length });
@@ -524,9 +691,10 @@ export default function VisionaryResearchApp() {
     setIsTyping(true);
 
     try {
-      // Prepare context from files
+      // Prepare context from files and knowledge base
+      const kbContext = knowledgeBase.map(item => `KNOWLEDGE_ITEM (${item.type}): ${item.name}\nCONTENT: ${item.content}`).join('\n\n');
       const fileContext = userMessage.files?.map(f => `FILE: ${f.name}\nCONTENT: ${f.content}`).join('\n\n') || '';
-      const fullPrompt = `${selectedAgent.systemPrompt}\n\nUSER CONTEXT/FILES:\n${fileContext}\n\nUSER MESSAGE: ${textToMessage}`;
+      const fullPrompt = `${selectedAgent.systemPrompt}\n\nKNOWLEDGE BASE:\n${kbContext}\n\nUSER CONTEXT/FILES:\n${fileContext}\n\nUSER MESSAGE: ${textToMessage}`;
 
       console.log('Calling AI with prompt length:', fullPrompt.length);
       
@@ -550,7 +718,7 @@ export default function VisionaryResearchApp() {
       };
 
       const tools: any[] = [{ googleSearch: {} }];
-      if (selectedAgent.id === '06') {
+      if (selectedAgent.id === 'doc-prod' || selectedAgent.id === 'legal-ip') {
         tools.push({ functionDeclarations: [patentSearchTool] });
       }
 
@@ -680,7 +848,8 @@ export default function VisionaryResearchApp() {
 
   const handleStartRecording = async () => {
     if (!isLiveMode) {
-      await toggleLiveMode();
+      const success = await toggleLiveMode();
+      if (!success) return;
     }
     setIsRecording(true);
     isRecordingRef.current = true;
@@ -693,6 +862,13 @@ export default function VisionaryResearchApp() {
     setIsRecording(false);
     isRecordingRef.current = false;
     toast.info('Înregistrare oprită');
+    
+    // Auto-generate minutes for doc-prod agent
+    if (selectedAgent?.id === 'doc-prod' && transcriptRef.current.length > 0) {
+      setTimeout(() => {
+        handleGenerateMinutes();
+      }, 500);
+    }
   };
 
   const handleGenerateMinutes = () => {
@@ -722,82 +898,158 @@ export default function VisionaryResearchApp() {
 
     toast.promise(
       async () => {
-        const title = `Raport dotLumen - ${selectedAgent.title}`;
+        const agentTitle = selectedAgent?.title || 'dotLumen';
+        const reportName = `Raport ${agentTitle}`;
+        const currentDate = format(new Date(), 'MM/dd/yyyy');
+        const author = user?.email || '<enter author>';
+        const docVersion = 'v1.0';
         const content = lastAiMessage.content;
+
+        // Split content into roughly 4 parts
+        const lines = content.split('\n').filter(l => l.trim());
+        const linesPerSection = Math.max(1, Math.ceil(lines.length / 4));
+        const sectionsData = [
+          { title: 'Introduction', content: lines.slice(0, linesPerSection).join('\n') },
+          { title: 'Analysis', content: lines.slice(linesPerSection, 2 * linesPerSection).join('\n') },
+          { title: 'Strategic Insights', content: lines.slice(2 * linesPerSection, 3 * linesPerSection).join('\n') },
+          { title: 'Conclusions', content: lines.slice(3 * linesPerSection).join('\n') }
+        ];
 
         const doc = new Document({
           sections: [
             {
-              properties: {},
+              headers: {
+                default: new Header({
+                  children: [
+                    new Table({
+                      width: { size: 100, type: WidthType.PERCENTAGE },
+                      borders: {
+                        top: { style: BorderStyle.NONE },
+                        bottom: { style: BorderStyle.SINGLE, size: 1, color: "000000" },
+                        left: { style: BorderStyle.NONE },
+                        right: { style: BorderStyle.NONE },
+                        insideHorizontal: { style: BorderStyle.NONE },
+                        insideVertical: { style: BorderStyle.NONE },
+                      },
+                      rows: [
+                        new TableRow({
+                          children: [
+                            new TableCell({
+                              children: [
+                                new Paragraph({
+                                  children: [new TextRun({ text: `Report: ${reportName}`, size: 24 })]
+                                })
+                              ],
+                              verticalAlign: VerticalAlign.CENTER,
+                            }),
+                            new TableCell({
+                              children: [
+                                new Paragraph({
+                                  children: [
+                                    new TextRun({ text: "lumen", size: 36, bold: false, color: "000000" }),
+                                  ],
+                                  alignment: AlignmentType.RIGHT,
+                                }),
+                              ],
+                              verticalAlign: VerticalAlign.CENTER,
+                            }),
+                          ],
+                        }),
+                      ],
+                    }),
+                  ],
+                }),
+              },
+              footers: {
+                default: new Footer({
+                  children: [
+                    new Paragraph({
+                      border: { top: { style: BorderStyle.SINGLE, size: 1, color: "000000" } },
+                      children: [
+                        new TextRun({ text: docVersion, size: 20 }),
+                        new TextRun({ children: ["\t", PageNumber.CURRENT, "\t"], size: 20 }),
+                        new TextRun({ text: "[Internal]", size: 20 }),
+                      ],
+                      alignment: AlignmentType.CENTER,
+                      spacing: { before: 200 },
+                    }),
+                  ],
+                }),
+              },
               children: [
                 new Paragraph({
-                  children: [
-                    new TextRun({
-                      text: "dotLumen Visionary Research",
-                      bold: true,
-                      size: 32,
-                      color: "1B4F5C",
+                  children: [new TextRun({ text: `Report: ${reportName}`, bold: true, size: 48 })],
+                  alignment: AlignmentType.CENTER,
+                  spacing: { before: 800, after: 800 },
+                }),
+                new Table({
+                  width: { size: 100, type: WidthType.PERCENTAGE },
+                  rows: [
+                    new TableRow({
+                      children: [
+                        new TableCell({
+                          children: [
+                            new Paragraph({
+                              children: [
+                                new TextRun({ text: "Doc version: ", bold: true }),
+                                new TextRun({ text: docVersion }),
+                              ],
+                            }),
+                          ],
+                          borders: { bottom: { style: BorderStyle.SINGLE, size: 1, color: "EEEEEE" } },
+                        }),
+                        new TableCell({
+                          children: [
+                            new Paragraph({
+                              children: [
+                                new TextRun({ text: "Date of version: ", bold: true }),
+                                new TextRun({ text: currentDate }),
+                              ],
+                            }),
+                          ],
+                          borders: { bottom: { style: BorderStyle.SINGLE, size: 1, color: "EEEEEE" } },
+                        }),
+                      ],
+                    }),
+                    new TableRow({
+                      children: [
+                        new TableCell({
+                          children: [
+                            new Paragraph({
+                              children: [
+                                new TextRun({ text: "Status of document: ", bold: true }),
+                                new TextRun({ text: "Draft" }),
+                              ],
+                            }),
+                          ],
+                          borders: { bottom: { style: BorderStyle.SINGLE, size: 1, color: "EEEEEE" } },
+                        }),
+                        new TableCell({
+                          children: [
+                            new Paragraph({
+                              children: [
+                                new TextRun({ text: "Author/Owner: ", bold: true }),
+                                new TextRun({ text: author }),
+                              ],
+                            }),
+                          ],
+                          borders: { bottom: { style: BorderStyle.SINGLE, size: 1, color: "EEEEEE" } },
+                        }),
+                      ],
                     }),
                   ],
-                  alignment: AlignmentType.CENTER,
-                  spacing: { after: 400 },
                 }),
-                new Paragraph({
-                  children: [
-                    new TextRun({
-                      text: "Raport de Inteligență Strategică / Minută Ședință",
-                      bold: true,
-                      size: 24,
-                      color: "3AACCA",
-                    }),
-                  ],
-                  alignment: AlignmentType.CENTER,
-                  spacing: { after: 600 },
-                }),
-                new Paragraph({
-                  children: [
-                    new TextRun({ text: "Agent: ", bold: true }),
-                    new TextRun({ text: selectedAgent.title }),
-                  ],
-                  spacing: { after: 200 },
-                }),
-                new Paragraph({
-                  children: [
-                    new TextRun({ text: "Data: ", bold: true }),
-                    new TextRun({ text: format(new Date(), 'PPP', { locale: ro }) }),
-                  ],
-                  spacing: { after: 800 },
-                }),
-                ...content.split('\n').map(line => {
-                  const isHeading = line.startsWith('#');
-                  const cleanLine = line.replace(/#/g, '').trim();
-                  
-                  if (!cleanLine) return new Paragraph({ text: "" });
-
-                  return new Paragraph({
-                    children: [
-                      new TextRun({ 
-                        text: cleanLine,
-                        bold: isHeading,
-                        size: isHeading ? 24 : 20,
-                        color: isHeading ? "1B4F5C" : "334155"
-                      })
-                    ],
-                    spacing: { after: 200, before: isHeading ? 400 : 0 },
-                    heading: isHeading ? HeadingLevel.HEADING_3 : undefined,
-                  });
-                }),
-                new Paragraph({
-                  children: [
-                    new TextRun({
-                      text: "© 2026 dotLumen (.lumen) - Confidențial - Uz Intern",
-                      size: 16,
-                      color: "999999",
-                    }),
-                  ],
-                  alignment: AlignmentType.CENTER,
-                  spacing: { before: 1000 },
-                }),
+                new Paragraph({ text: "", spacing: { after: 400 } }),
+                ...sectionsData.flatMap((sec, i) => [
+                  new Paragraph({
+                    children: [new TextRun({ text: `${i + 1}. ${sec.title}`, bold: true, size: 36 })],
+                    spacing: { before: 400, after: 200 },
+                  }),
+                  ...sec.content.split('\n').map(line => new Paragraph({
+                    children: [new TextRun({ text: line, size: 22 })],
+                    spacing: { after: 150 },
+                  })),
+                ]),
               ],
             },
           ],
@@ -827,61 +1079,143 @@ export default function VisionaryResearchApp() {
     
     toast.promise(
       async () => {
-        // Create a clean version of the chat for PDF
+        const agentTitle = selectedAgent?.title || 'dotLumen';
+        const reportName = `Raport ${agentTitle}`;
+        const currentDate = format(new Date(), 'MM/dd/yyyy');
+        const author = user?.email || '<enter author>';
+        const docVersion = 'v1.0';
+
+        // Create a clean version of the chat for PDF matching the template
         const element = document.createElement('div');
-        element.style.padding = '40px';
+        element.style.padding = '20mm';
         element.style.backgroundColor = '#ffffff';
         element.style.color = '#000000';
         element.style.fontFamily = 'Arial, sans-serif';
-        element.style.width = '800px'; // Fixed width for consistent rendering
+        element.style.width = '210mm'; // A4 width
+        element.style.minHeight = '297mm'; // A4 height
+        element.style.boxSizing = 'border-box';
+        element.style.position = 'relative';
         
-        const agentTitle = selectedAgent?.title || 'dotLumen';
+        // Header
         const header = document.createElement('div');
+        header.style.display = 'flex';
+        header.style.justifyContent = 'space-between';
+        header.style.alignItems = 'center';
+        header.style.marginBottom = '5px';
         header.innerHTML = `
-          <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #1B4F5C; padding-bottom: 15px; margin-bottom: 25px;">
-            <div>
-              <h1 style="color: #1B4F5C; margin: 0; font-size: 24px;">dotLumen Visionary Research</h1>
-              <p style="color: #666; margin: 5px 0 0 0; font-size: 14px;">Raport de Inteligență Strategică</p>
+          <div style="font-size: 12pt; color: #000;">Report: ${reportName}</div>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <div style="display: grid; grid-template-columns: repeat(3, 4px); gap: 2px;">
+              ${Array(9).fill(0).map((_, i) => `<div style="width: 4px; height: 4px; border-radius: 50%; background-color: ${i % 2 === 0 ? '#3AACCA' : '#1B4F5C'};"></div>`).join('')}
             </div>
-            <div style="text-align: right;">
-              <p style="margin: 0; font-weight: bold; color: #1B4F5C;">${agentTitle}</p>
-              <p style="margin: 5px 0 0 0; font-size: 12px; color: #999;">${format(new Date(), 'PPP', { locale: ro })}</p>
-            </div>
+            <span style="font-size: 18pt; font-weight: 300; letter-spacing: -1px; color: #000;">lumen</span>
           </div>
         `;
         element.appendChild(header);
-        
-        chatMessages.forEach(msg => {
-          const msgDiv = document.createElement('div');
-          msgDiv.style.marginBottom = '25px';
-          msgDiv.style.padding = '15px';
-          msgDiv.style.borderRadius = '8px';
-          msgDiv.style.backgroundColor = msg.role === 'user' ? '#f8fafc' : '#ffffff';
-          msgDiv.style.border = msg.role === 'user' ? '1px solid #e2e8f0' : 'none';
-          
-          msgDiv.innerHTML = `
-            <p style="font-weight: bold; color: ${msg.role === 'user' ? '#1B4F5C' : '#3AACCA'}; margin-top: 0; margin-bottom: 10px; font-size: 14px; text-transform: uppercase; letter-spacing: 1px;">
-              ${msg.role === 'user' ? 'Cercetător' : 'dotLumen AI'}:
-            </p>
-            <div style="white-space: pre-wrap; line-height: 1.6; font-size: 13px; color: #334155;">${msg.content}</div>
-          `;
-          element.appendChild(msgDiv);
-        });
 
+        // Header Line
+        const headerLine = document.createElement('div');
+        headerLine.style.borderBottom = '1px solid #000';
+        headerLine.style.marginBottom = '10px';
+        element.appendChild(headerLine);
+
+        // Main Title
+        const mainTitle = document.createElement('div');
+        mainTitle.style.textAlign = 'center';
+        mainTitle.style.fontSize = '24pt';
+        mainTitle.style.fontWeight = 'bold';
+        mainTitle.style.marginBottom = '20px';
+        mainTitle.innerText = `Report: ${reportName}`;
+        element.appendChild(mainTitle);
+
+        // Metadata Table
+        const metaTable = document.createElement('div');
+        metaTable.style.display = 'grid';
+        metaTable.style.gridTemplateColumns = '1fr 1fr';
+        metaTable.style.gap = '10px 40px';
+        metaTable.style.marginBottom = '40px';
+        metaTable.style.fontSize = '11pt';
+        metaTable.innerHTML = `
+          <div style="display: flex; justify-content: space-between; border-bottom: 1px solid #eee; padding-bottom: 2px;">
+            <span style="font-weight: bold;">Doc version:</span>
+            <span style="color: #666;">${docVersion}</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; border-bottom: 1px solid #eee; padding-bottom: 2px;">
+            <span style="font-weight: bold;">Date of version:</span>
+            <span style="color: #666;">${currentDate}</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; border-bottom: 1px solid #eee; padding-bottom: 2px;">
+            <span style="font-weight: bold;">Status of document:</span>
+            <span style="color: #666;">Draft</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; border-bottom: 1px solid #eee; padding-bottom: 2px;">
+            <span style="font-weight: bold;">Author/Owner:</span>
+            <span style="color: #666;">${author}</span>
+          </div>
+        `;
+        element.appendChild(metaTable);
+
+        // Content Sections
+        const contentContainer = document.createElement('div');
+        contentContainer.style.lineHeight = '1.6';
+        
+        // Extract content from AI messages
+        const lastAiMessage = [...chatMessages].reverse().find(m => m.role === 'assistant');
+        const content = lastAiMessage ? lastAiMessage.content : "No content available.";
+        
+        // Simple mapping to sections (1. Introduction, 2. Analysis, 3. Insights, 4. Conclusions)
+        const sections = [
+          { title: 'Introduction', content: '' },
+          { title: 'Analysis', content: '' },
+          { title: 'Strategic Insights', content: '' },
+          { title: 'Conclusions', content: '' }
+        ];
+
+        // Split content into roughly 4 parts if not already structured
+        const lines = content.split('\n').filter(l => l.trim());
+        const linesPerSection = Math.max(1, Math.ceil(lines.length / 4));
+        
+        sections.forEach((sec, i) => {
+          sec.content = lines.slice(i * linesPerSection, (i + 1) * linesPerSection).join('\n');
+          
+          const secDiv = document.createElement('div');
+          secDiv.style.marginBottom = '30px';
+          secDiv.innerHTML = `
+            <h2 style="font-size: 18pt; font-weight: bold; margin-bottom: 10px;">${i + 1}. ${sec.title}</h2>
+            <div style="font-size: 11pt; white-space: pre-wrap; color: #333;">${sec.content}</div>
+          `;
+          contentContainer.appendChild(secDiv);
+        });
+        
+        element.appendChild(contentContainer);
+
+        // Footer Line
+        const footerLine = document.createElement('div');
+        footerLine.style.position = 'absolute';
+        footerLine.style.bottom = '40mm';
+        footerLine.style.left = '20mm';
+        footerLine.style.right = '20mm';
+        footerLine.style.borderTop = '1px solid #000';
+        element.appendChild(footerLine);
+
+        // Footer
         const footer = document.createElement('div');
-        footer.style.marginTop = '40px';
-        footer.style.paddingTop = '20px';
-        footer.style.borderTop = '1px solid #eee';
-        footer.style.textAlign = 'center';
-        footer.style.fontSize = '10px';
-        footer.style.color = '#999';
+        footer.style.position = 'absolute';
+        footer.style.bottom = '30mm';
+        footer.style.left = '20mm';
+        footer.style.right = '20mm';
+        footer.style.display = 'flex';
+        footer.style.justifyContent = 'space-between';
+        footer.style.fontSize = '10pt';
+        footer.style.color = '#000';
         footer.innerHTML = `
-          <p>© 2026 dotLumen (.lumen) - Toate drepturile rezervate. Generat prin Visionary Research Platform.</p>
-          <p>Confidențial - Uz Intern</p>
+          <span>${docVersion}</span>
+          <span>1</span>
+          <span>[Internal]</span>
         `;
         element.appendChild(footer);
 
-        // Temporarily append to body to ensure styles are calculated correctly
+        // Temporarily append to body
         document.body.appendChild(element);
         element.style.position = 'absolute';
         element.style.left = '-9999px';
@@ -889,7 +1223,7 @@ export default function VisionaryResearchApp() {
 
         const safeTitle = agentTitle.replace(/[^a-z0-9]/gi, '_').toLowerCase();
         const opt = {
-          margin: 15,
+          margin: 0,
           filename: `Raport_dotLumen_${safeTitle}_${format(new Date(), 'yyyy-MM-dd')}.pdf`,
           image: { type: 'jpeg' as const, quality: 0.98 },
           html2canvas: { 
@@ -902,7 +1236,6 @@ export default function VisionaryResearchApp() {
         };
         
         try {
-          // Robust way to call html2pdf regardless of import style
           const h2p = (html2pdf as any).default || html2pdf;
           if (typeof h2p === 'function') {
             await h2p().set(opt).from(element).save();
@@ -988,21 +1321,33 @@ export default function VisionaryResearchApp() {
     }
   };
 
-  const toggleLiveMode = async () => {
-    if (!apiKey) {
+  const toggleLiveMode = async (): Promise<boolean> => {
+    const currentApiKey = getApiKey();
+    if (!currentApiKey) {
       toast.error('AI API Key is missing. Voice mode unavailable.');
-      return;
+      return false;
     }
+
     if (isLiveMode) {
       stopLiveMode();
-      return;
+      return true;
     }
 
     try {
-      // 1. Initialize Audio Context at 24kHz for better quality
+      // Check if a paid API key is selected for Gemini 3 series models
+      if (window.aistudio && typeof window.aistudio.hasSelectedApiKey === 'function') {
+        const hasKey = await window.aistudio.hasSelectedApiKey();
+        if (!hasKey && typeof window.aistudio.openSelectKey === 'function') {
+          toast.info('Vă rugăm să selectați un API Key pentru a activa modul vocal.');
+          await window.aistudio.openSelectKey();
+        }
+      }
+
+      const ai = new GoogleGenAI({ apiKey: currentApiKey });
+
       if (!audioContextRef.current) {
         audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({
-          sampleRate: 24000,
+          sampleRate: 16000,
         });
       }
       const audioCtx = audioContextRef.current;
@@ -1010,42 +1355,39 @@ export default function VisionaryResearchApp() {
         await audioCtx.resume();
       }
 
-      // 2. Connect to Gemini Live
-      const systemInstruction = `
-        Ești dotLumen AI, o prezență feminină caldă, inteligentă și extrem de empatică. 
-        Rolul tău este de asistent de cercetare vizionară pentru .lumen (dotLumen).
-        
-        REGULI DE COMUNICARE:
-        1. Vorbește EXCLUSIV în limba română, cu o intonație naturală și un accent bucureștean curat.
-        2. Vocea ta trebuie să sune uman, nu robotic. Folosește pauze naturale și o cadență prietenoasă.
-        3. Ești expertă în tehnologie asistivă și inovație care ajută oamenii.
-        4. Răspunsurile tale trebuie să fie concise (maxim 2-3 propoziții) pentru a menține latența scăzută.
-        5. Evită formulele de politețe excesive sau introducerile lungi de tipul "Bună, sunt dotLumen...". Treci direct la esență.
-        
-        CONTEXT: ${selectedAgent?.systemPrompt || "Ești pregătită să ajuți cu cercetarea."}
-      `.trim();
+      const systemInstruction = `Ești dotLumen AI, o prezență feminină caldă, inteligentă și extrem de empatică. Rolul tău este de asistent de cercetare vizionară pentru .lumen (dotLumen). Vorbește natural, cald și concis în română. Răspunde în maxim 2 propoziții. CONTEXT: ${selectedAgent?.title}. ${selectedAgent?.systemPrompt || ""}`;
 
       const sessionPromise = ai.live.connect({
-        model: "gemini-2.5-flash-native-audio-preview-12-2025",
+        model: "gemini-3.1-flash-live-preview",
         callbacks: {
           onopen: () => {
             setIsLiveMode(true);
             toast.success('Sesiune vocală activă');
-            sessionPromise.then(session => startMicrophone(session));
+            sessionPromise.then(session => startMicrophone(session)).catch(err => {
+              console.error('Failed to start microphone:', err);
+              stopLiveMode();
+            });
           },
-          onmessage: async (message: LiveServerMessage) => {
+          onmessage: (message: LiveServerMessage) => {
+            if (message.serverContent?.inputTranscription) {
+              const text = message.serverContent.inputTranscription.text;
+              if (text && isRecordingRef.current) {
+                transcriptRef.current.push({ role: 'User', text, timestamp: new Date() });
+                setMeetingTranscript([...transcriptRef.current]);
+              }
+            }
+
             const parts = message.serverContent?.modelTurn?.parts;
             if (parts) {
               for (const part of parts) {
                 if (part.text && isRecordingRef.current) {
-                  const role = isAiSpeakingRef.current ? 'AI' : 'User';
-                  transcriptRef.current.push({ role, text: part.text, timestamp: new Date() });
+                  transcriptRef.current.push({ role: 'AI', text: part.text, timestamp: new Date() });
                   setMeetingTranscript([...transcriptRef.current]);
                 }
-                if (part.inlineData?.data) {
+                if (part.inlineData?.data && selectedAgent?.id !== 'doc-prod') {
                   setIsAiSpeaking(true);
                   isAiSpeakingRef.current = true;
-                  playReceivedAudio(part.inlineData.data, 24000);
+                  playReceivedAudio(part.inlineData.data, 16000);
                 }
               }
             }
@@ -1059,7 +1401,7 @@ export default function VisionaryResearchApp() {
           onerror: (err) => {
             console.error('Live Error:', err);
             stopLiveMode();
-            toast.error('Eroare sesiune vocală');
+            toast.error('Eroare sesiune vocală: ' + (err.message || 'Internal error'));
           }
         },
         config: {
@@ -1067,9 +1409,7 @@ export default function VisionaryResearchApp() {
           systemInstruction: systemInstruction,
           speechConfig: {
             voiceConfig: { 
-              prebuiltVoiceConfig: { 
-                voiceName: "Zephyr" // High-quality female voice
-              } 
+              prebuiltVoiceConfig: { voiceName: "Kore" } 
             }
           },
           inputAudioTranscription: {},
@@ -1078,9 +1418,12 @@ export default function VisionaryResearchApp() {
       });
       const session = await sessionPromise;
       liveSessionRef.current = session;
+      return true;
     } catch (error) {
       console.error('Failed to start live session:', error);
       toast.error('Microphone access or AI connection failed');
+      stopLiveMode();
+      return false;
     }
   };
 
@@ -1123,7 +1466,7 @@ export default function VisionaryResearchApp() {
         const base64Data = btoa(binary);
 
         session.sendRealtimeInput({
-          audio: { data: base64Data, mimeType: 'audio/pcm;rate=24000' }
+          audio: { data: base64Data, mimeType: 'audio/pcm;rate=16000' }
         });
       };
 
@@ -1198,12 +1541,25 @@ export default function VisionaryResearchApp() {
     nextPlaybackTimeRef.current = 0;
   };
 
+  const goHome = () => {
+    setSelectedAgent(null);
+    setView('grid');
+    setActiveCategory('All');
+    setSearchQuery('');
+  };
+
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#050505] flex items-center justify-center">
-        <div className="flex flex-col items-center gap-4">
+      <div className="min-h-screen bg-slate-50 dark:bg-[#050505] flex items-center justify-center transition-colors duration-300">
+        <div className="flex flex-col items-center gap-6">
+          <img 
+            src={theme === 'dark' ? LOGO_DARK : LOGO_LIGHT} 
+            alt="dotLumen" 
+            referrerPolicy="no-referrer"
+            className="h-12 animate-pulse"
+          />
           <div className="w-16 h-16 border-4 border-teal-500/20 border-t-teal-500 rounded-full animate-spin" />
-          <p className="text-teal-500 font-mono text-sm tracking-widest animate-pulse">INITIALIZING VISIONARY SYSTEM...</p>
+          <p className="text-teal-500 font-mono text-sm tracking-widest animate-pulse uppercase">Initializing Visionary System...</p>
         </div>
       </div>
     );
@@ -1211,21 +1567,26 @@ export default function VisionaryResearchApp() {
 
   if (!user) {
     return (
-      <div className="min-h-screen bg-[#050505] flex items-center justify-center p-6">
+      <div className="min-h-screen bg-slate-50 dark:bg-[#050505] flex items-center justify-center p-6 transition-colors duration-300">
         <div className="max-w-md w-full">
           <div className="text-center mb-12">
-            <div className="w-20 h-20 bg-teal-500/10 rounded-3xl flex items-center justify-center mx-auto mb-6 border border-teal-500/20">
-              <Sparkles className="w-10 h-10 text-teal-400" />
+            <div className="mb-8 flex justify-center">
+              <img 
+                src={theme === 'dark' ? LOGO_DARK : LOGO_LIGHT} 
+                alt="dotLumen" 
+                referrerPolicy="no-referrer"
+                className="h-16"
+              />
             </div>
-            <h1 className="text-4xl font-black text-white mb-4 tracking-tight">Visionary Research</h1>
-            <p className="text-slate-400 text-lg leading-relaxed">
+            <h1 className="text-4xl font-black text-slate-900 dark:text-white mb-4 tracking-tight">Visionary Research</h1>
+            <p className="text-slate-600 dark:text-slate-400 text-lg leading-relaxed">
               The professional AI intelligence platform for dotLumen's next generation of assistive technology.
             </p>
           </div>
           
           <button
             onClick={handleLogin}
-            className="w-full py-4 bg-white text-black font-bold rounded-2xl flex items-center justify-center gap-3 hover:bg-teal-400 transition-all duration-300 shadow-xl shadow-teal-500/10"
+            className="w-full py-4 bg-white dark:bg-slate-900 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-800 font-bold rounded-2xl flex items-center justify-center gap-3 hover:bg-teal-400 dark:hover:bg-teal-500 transition-all duration-300 shadow-xl shadow-teal-500/10"
           >
             <Globe className="w-5 h-5" />
             Continue with Google
@@ -1240,23 +1601,29 @@ export default function VisionaryResearchApp() {
   }
 
   return (
-    <div className="min-h-screen bg-[#050505] text-slate-200 flex overflow-hidden font-sans">
-      <Toaster position="top-right" theme="dark" />
+    <div className="min-h-screen bg-slate-50 dark:bg-[#050505] text-slate-900 dark:text-slate-200 flex overflow-hidden font-sans transition-colors duration-300">
+      <Toaster position="top-right" theme={theme} />
       
       {/* Sidebar */}
       <motion.aside 
         initial={false}
         animate={{ width: sidebarCollapsed ? 80 : 280 }}
-        className="bg-slate-900/40 border-r border-slate-800 flex flex-col z-30 relative"
+        className="bg-white dark:bg-slate-900/40 border-r border-slate-200 dark:border-slate-800 flex flex-col z-30 relative transition-colors duration-300"
       >
         <div className="p-6 flex items-center justify-between">
           {!sidebarCollapsed && (
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 bg-teal-500 rounded-lg flex items-center justify-center font-black text-black text-sm">
-                .L
-              </div>
-              <span className="font-black text-lg tracking-tighter text-white">VISIONARY</span>
-            </div>
+            <button 
+              onClick={goHome}
+              className="flex items-center gap-3 group hover:opacity-80 transition-all"
+            >
+              <img 
+                src={theme === 'dark' ? LOGO_DARK : LOGO_LIGHT} 
+                alt="dotLumen" 
+                referrerPolicy="no-referrer"
+                className="h-6"
+              />
+              <span className="font-black text-lg tracking-tighter text-slate-900 dark:text-white">VISIONARY</span>
+            </button>
           )}
           <button 
             onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
@@ -1295,12 +1662,14 @@ export default function VisionaryResearchApp() {
                 key={cat}
                 onClick={() => setActiveCategory(cat)}
                 className={cn(
-                  "flex items-center gap-3 w-full p-3 rounded-xl transition-all text-sm",
-                  activeCategory === cat ? "text-teal-400 bg-teal-500/5" : "text-slate-500 hover:text-slate-300"
+                  "flex items-center gap-3 w-full p-3 rounded-xl transition-all text-sm text-left",
+                  activeCategory === cat 
+                    ? "text-teal-600 dark:text-teal-400 bg-teal-500/5" 
+                    : "text-slate-600 dark:text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800/30 hover:text-slate-900 dark:hover:text-slate-300"
                 )}
               >
-                <div className={cn("w-1.5 h-1.5 rounded-full", activeCategory === cat ? "bg-teal-400" : "bg-slate-700")} />
-                {!sidebarCollapsed && <span>{cat}</span>}
+                <div className={cn("w-1.5 h-1.5 rounded-full shrink-0", activeCategory === cat ? "bg-teal-500" : "bg-slate-300 dark:bg-slate-700")} />
+                {!sidebarCollapsed && <span className="line-clamp-2">{cat}</span>}
               </button>
             ))}
           </div>
@@ -1311,11 +1680,12 @@ export default function VisionaryResearchApp() {
             <img 
               src={user.photoURL || `https://ui-avatars.com/api/?name=${user.displayName}`} 
               alt="Avatar" 
+              referrerPolicy="no-referrer"
               className="w-8 h-8 rounded-full border border-slate-700"
             />
             {!sidebarCollapsed && (
               <div className="flex-1 min-w-0">
-                <p className="text-xs font-bold text-white truncate">{user.displayName}</p>
+                <p className="text-xs font-bold text-slate-900 dark:text-white truncate">{user.displayName}</p>
                 <p className="text-[10px] text-slate-500 truncate">{user.email}</p>
               </div>
             )}
@@ -1331,24 +1701,41 @@ export default function VisionaryResearchApp() {
       {/* Main Content */}
       <main className="flex-1 flex flex-col relative overflow-hidden">
         {/* Header */}
-        <header className="h-20 border-b border-slate-800 flex items-center justify-between px-8 bg-[#050505]/80 backdrop-blur-xl z-20">
+        <header className="h-20 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between px-8 bg-white/80 dark:bg-[#050505]/80 backdrop-blur-xl z-20 transition-colors duration-300">
           <div className="flex-1 max-w-2xl relative">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500" />
             <input 
               type="text" 
               placeholder="Search intelligence agents, use cases, or research topics..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-slate-900/50 border border-slate-800 rounded-2xl py-3 pl-12 pr-4 text-sm focus:outline-none focus:border-teal-500/50 focus:ring-4 focus:ring-teal-500/5 transition-all"
+              className="w-full bg-slate-100 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 rounded-2xl py-3 pl-12 pr-4 text-sm text-slate-900 dark:text-white focus:outline-none focus:border-teal-500/50 focus:ring-4 focus:ring-teal-500/5 transition-all"
             />
           </div>
           
           <div className="flex items-center gap-4 ml-8">
-            <button className="p-3 bg-slate-900 border border-slate-800 rounded-xl text-slate-400 hover:text-white transition-colors relative">
-              <History className="w-5 h-5" />
-              <span className="absolute top-2 right-2 w-2 h-2 bg-teal-500 rounded-full border-2 border-[#050505]" />
+            <button 
+              onClick={() => setTheme(prev => prev === 'light' ? 'dark' : 'light')}
+              className="p-3 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-slate-500 dark:text-slate-400 hover:text-teal-600 dark:hover:text-white transition-colors"
+              title={theme === 'light' ? 'Switch to Dark Mode' : 'Switch to Light Mode'}
+            >
+              {theme === 'light' ? <Moon className="w-5 h-5" /> : <Sun className="w-5 h-5" />}
             </button>
-            <button className="px-6 py-3 bg-teal-500 text-black font-bold rounded-xl hover:bg-teal-400 transition-all shadow-lg shadow-teal-500/20 flex items-center gap-2">
+            <button 
+              onClick={() => setView('archive')}
+              className="p-3 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-slate-500 dark:text-slate-400 hover:text-teal-600 dark:hover:text-white transition-colors relative"
+              title="Research Archive"
+            >
+              <History className="w-5 h-5" />
+              <span className="absolute top-2 right-2 w-2 h-2 bg-teal-500 rounded-full border-2 border-white dark:border-[#050505]" />
+            </button>
+            <button 
+              onClick={() => {
+                setIsNewResearchModalOpen(true);
+              }}
+              className="px-6 py-3 bg-teal-500 text-black font-bold rounded-xl hover:bg-teal-400 transition-all shadow-lg shadow-teal-500/20 flex items-center gap-2"
+              title="Start New Research"
+            >
               <Plus className="w-4 h-4" />
               New Research
             </button>
@@ -1367,10 +1754,10 @@ export default function VisionaryResearchApp() {
               >
                 <div className="mb-10">
                   <div className="flex items-center gap-3 mb-2">
-                    <Zap className="w-5 h-5 text-teal-400" />
-                    <h2 className="text-2xl font-black text-white tracking-tight">Intelligence Playbook</h2>
+                    <Zap className="w-5 h-5 text-teal-600 dark:text-teal-400" />
+                    <h2 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">Intelligence Playbook</h2>
                   </div>
-                  <p className="text-slate-400 text-sm">Select a specialized AI agent to begin your research or business task.</p>
+                  <p className="text-slate-600 dark:text-slate-400 text-sm">Select a specialized AI agent to begin your research or business task.</p>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
@@ -1378,6 +1765,8 @@ export default function VisionaryResearchApp() {
                     <AgentCard 
                       key={agent.id} 
                       agent={agent} 
+                      theme={theme}
+                      onLogoClick={goHome}
                       onClick={() => {
                         setSelectedAgent(agent);
                         setChatMessages([]);
@@ -1395,13 +1784,13 @@ export default function VisionaryResearchApp() {
               >
                 <div className="mb-10">
                   <div className="flex items-center gap-3 mb-2">
-                    <Archive className="w-5 h-5 text-teal-400" />
-                    <h2 className="text-2xl font-black text-white tracking-tight">Research Archive</h2>
+                    <Archive className="w-5 h-5 text-teal-600 dark:text-teal-400" />
+                    <h2 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">Research Archive</h2>
                   </div>
-                  <p className="text-slate-400 text-sm">Historical intelligence reports and AI-generated strategic documents.</p>
+                  <p className="text-slate-600 dark:text-slate-400 text-sm">Historical intelligence reports and AI-generated strategic documents.</p>
                 </div>
                 
-                <ArchiveGrid reports={reports} onSelect={handleOpenReport} />
+                <ArchiveGrid reports={reports} theme={theme} onLogoClick={goHome} onSelect={handleOpenReport} />
               </motion.div>
             )}
           </AnimatePresence>
@@ -1415,26 +1804,35 @@ export default function VisionaryResearchApp() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center p-4 md:p-10 bg-[#050505]/90 backdrop-blur-sm"
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 md:p-10 bg-slate-100/90 dark:bg-[#050505]/90 backdrop-blur-sm transition-colors duration-300"
           >
             <motion.div
               initial={{ scale: 0.9, y: 20 }}
               animate={{ scale: 1, y: 0 }}
               exit={{ scale: 0.9, y: 20 }}
-              className="bg-slate-900 border border-slate-800 w-full max-w-6xl h-full rounded-3xl overflow-hidden flex flex-col shadow-2xl shadow-black"
+              className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 w-full max-w-6xl h-full rounded-3xl overflow-hidden flex flex-col shadow-2xl shadow-black transition-colors duration-300"
             >
               {/* Modal Header */}
-              <div className="h-20 border-b border-slate-800 flex items-center justify-between px-8 bg-slate-900/50">
+              <div className="h-20 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between px-8 bg-slate-50/50 dark:bg-slate-900/50 transition-colors duration-300">
                 <div className="flex items-center gap-4">
-                  <div className="w-10 h-10 rounded-xl bg-teal-500/20 flex items-center justify-center text-xl">
+                  <div className="w-10 h-10 rounded-xl bg-teal-500/10 dark:bg-teal-500/20 flex items-center justify-center text-xl">
                     {selectedAgent.icon}
                   </div>
                   <div>
-                    <h3 className="font-bold text-white">{selectedAgent.title}</h3>
                     <div className="flex items-center gap-2">
-                      <span className="text-[10px] font-bold text-teal-500 uppercase tracking-widest">{selectedAgent.number}</span>
-                      <span className="w-1 h-1 rounded-full bg-slate-700" />
-                      <span className="text-[10px] text-slate-500">{selectedAgent.category}</span>
+                      <h3 className="font-bold text-slate-900 dark:text-white">{selectedAgent.title}</h3>
+                      <img 
+                        src={theme === 'dark' ? LOGO_DARK : LOGO_LIGHT} 
+                        alt="dotLumen" 
+                        referrerPolicy="no-referrer"
+                        onClick={goHome}
+                        className="h-4 opacity-60 hover:opacity-100 hover:scale-110 transition-all cursor-pointer"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-bold text-teal-600 dark:text-teal-500 uppercase tracking-widest">{selectedAgent.number}</span>
+                      <span className="w-1 h-1 rounded-full bg-slate-300 dark:bg-slate-700" />
+                      <span className="text-[10px] text-slate-500 dark:text-slate-500">{selectedAgent.category}</span>
                     </div>
                   </div>
                 </div>
@@ -1464,21 +1862,23 @@ export default function VisionaryResearchApp() {
                       )}
                     </div>
                   )}
-                  <button 
-                    onClick={toggleLiveMode}
-                    className={cn(
-                      "p-3 rounded-xl transition-all flex items-center gap-2 text-xs font-bold",
-                      isLiveMode 
-                        ? "bg-red-500 text-white shadow-lg shadow-red-500/20" 
-                        : "bg-slate-800 text-slate-400 hover:text-white"
-                    )}
-                  >
-                    {isLiveMode ? <Mic className="w-4 h-4" /> : <MicOff className="w-4 h-4" />}
-                    {isLiveMode ? "LIVE SESSION" : "VOICE MODE"}
-                  </button>
+                  {selectedAgent?.id !== 'doc-prod' && (
+                    <button 
+                      onClick={toggleLiveMode}
+                      className={cn(
+                        "p-3 rounded-xl transition-all flex items-center gap-2 text-xs font-bold",
+                        isLiveMode 
+                          ? "bg-red-500 text-white shadow-lg shadow-red-500/20" 
+                          : "bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-teal-600 dark:hover:text-white"
+                      )}
+                    >
+                      {isLiveMode ? <Mic className="w-4 h-4" /> : <MicOff className="w-4 h-4" />}
+                      {isLiveMode ? "LIVE SESSION" : "VOICE MODE"}
+                    </button>
+                  )}
                   <button 
                     onClick={() => setSelectedAgent(null)}
-                    className="p-3 bg-slate-800 text-slate-400 hover:text-white rounded-xl transition-colors"
+                    className="p-3 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-teal-600 dark:hover:text-white rounded-xl transition-colors"
                   >
                     <X className="w-5 h-5" />
                   </button>
@@ -1487,7 +1887,7 @@ export default function VisionaryResearchApp() {
 
               <div className="flex-1 flex overflow-hidden">
                 {/* Chat Area */}
-                <div className="flex-1 flex flex-col bg-[#050505]/40 relative">
+                <div className="flex-1 flex flex-col bg-slate-50/40 dark:bg-[#050505]/40 relative transition-colors duration-300">
                   <div 
                     id="chat-messages-container"
                     className="flex-1 overflow-y-auto p-8 space-y-8 scrollbar-hide"
@@ -1495,31 +1895,46 @@ export default function VisionaryResearchApp() {
                     {chatMessages.length === 0 && (
                       <div className="h-full flex flex-col items-center justify-center text-center max-w-md mx-auto">
                         <div className="w-16 h-16 bg-teal-500/10 rounded-2xl flex items-center justify-center mb-6 border border-teal-500/20">
-                          <Bot className="w-8 h-8 text-teal-400" />
+                          <Bot className="w-8 h-8 text-teal-600 dark:text-teal-400" />
                         </div>
-                        <h4 className="text-xl font-bold text-white mb-2">Initialize Research</h4>
-                        <p className="text-slate-400 text-sm leading-relaxed mb-8">
+                        <h4 className="text-xl font-bold text-slate-900 dark:text-white mb-2">Initialize Research</h4>
+                        <p className="text-slate-600 dark:text-slate-400 text-sm leading-relaxed mb-8">
                           I'm ready to assist with {selectedAgent.title.toLowerCase()}. You can upload documents or start by describing your task.
                         </p>
                         <div className="grid grid-cols-2 gap-3 w-full">
-                          <button 
-                            onClick={() => {
-                              setInputText("Analyze the current market trends for dotLumen and assistive technology.");
-                              setTimeout(handleSendMessage, 0);
-                            }}
-                            className="p-4 bg-slate-900 border border-slate-800 rounded-xl text-xs font-bold text-slate-300 hover:border-teal-500/40 transition-all"
-                          >
-                            Analyze Market
-                          </button>
-                          <button 
-                            onClick={() => {
-                              setInputText("Draft a research proposal for a new assistive technology project.");
-                              setTimeout(handleSendMessage, 0);
-                            }}
-                            className="p-4 bg-slate-900 border border-slate-800 rounded-xl text-xs font-bold text-slate-300 hover:border-teal-500/40 transition-all"
-                          >
-                            Draft Proposal
-                          </button>
+                          {selectedAgent.id === 'doc-prod' ? (
+                            <button 
+                              onClick={() => fileInputRef.current?.click()}
+                              className="col-span-2 p-6 bg-teal-500/10 dark:bg-teal-500/5 border-2 border-dashed border-teal-500/30 rounded-2xl text-sm font-bold text-teal-600 dark:text-teal-400 hover:bg-teal-500/20 hover:border-teal-500/50 transition-all flex flex-col items-center gap-3"
+                            >
+                              <div className="p-3 bg-teal-500/20 rounded-xl">
+                                <Plus className="w-6 h-6" />
+                              </div>
+                              Adaugă documente
+                              <span className="text-[10px] font-medium opacity-60 uppercase tracking-widest">PDF, DOCX, EXCEL, IMAGINI, VIDEO</span>
+                            </button>
+                          ) : (
+                            <>
+                              <button 
+                                onClick={() => {
+                                  setInputText("Analyze the current market trends for dotLumen and assistive technology.");
+                                  setTimeout(handleSendMessage, 0);
+                                }}
+                                className="p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-300 hover:border-teal-500/40 transition-all"
+                              >
+                                Analyze Market
+                              </button>
+                              <button 
+                                onClick={() => {
+                                  setInputText("Draft a research proposal for a new assistive technology project.");
+                                  setTimeout(handleSendMessage, 0);
+                                }}
+                                className="p-4 bg-slate-900 border border-slate-800 rounded-xl text-xs font-bold text-slate-300 hover:border-teal-500/40 transition-all"
+                              >
+                                Draft Proposal
+                              </button>
+                            </>
+                          )}
                         </div>
                       </div>
                     )}
@@ -1543,10 +1958,10 @@ export default function VisionaryResearchApp() {
                           msg.role === 'user' ? "text-right" : ""
                         )}>
                           <div className={cn(
-                            "p-4 rounded-2xl text-sm leading-relaxed",
+                            "p-4 rounded-2xl text-sm leading-relaxed transition-colors duration-300",
                             msg.role === 'user' 
                               ? "bg-teal-500 text-black font-medium" 
-                              : "bg-slate-800/50 border border-slate-800 text-slate-200"
+                              : "bg-white dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-200 shadow-sm dark:shadow-none"
                           )}>
                             <div className="markdown-body">
                               <Markdown remarkPlugins={[remarkGfm]}>{msg.content}</Markdown>
@@ -1586,16 +2001,16 @@ export default function VisionaryResearchApp() {
                   </div>
 
                   {/* Input Area */}
-                  <div className="p-8 bg-slate-900/80 backdrop-blur-md border-t border-slate-800">
+                  <div className="p-8 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-t border-slate-200 dark:border-slate-800 transition-colors duration-300">
                     {uploadedFiles.length > 0 && (
                       <div className="flex flex-wrap gap-2 mb-4">
                         {uploadedFiles.map(file => (
-                          <div key={file.id} className="flex items-center gap-2 px-3 py-1.5 bg-teal-500/10 border border-teal-500/20 rounded-xl text-xs text-teal-400 font-medium group">
+                          <div key={file.id} className="flex items-center gap-2 px-3 py-1.5 bg-teal-500/10 border border-teal-500/20 rounded-xl text-xs text-teal-600 dark:text-teal-400 font-medium group">
                             <FileText className="w-3 h-3" />
                             {file.name}
                             <button 
                               onClick={() => setUploadedFiles(prev => prev.filter(f => f.id !== file.id))}
-                              className="hover:text-red-400 transition-colors"
+                              className="hover:text-red-500 dark:hover:text-red-400 transition-colors"
                             >
                               <X className="w-3 h-3" />
                             </button>
@@ -1617,7 +2032,7 @@ export default function VisionaryResearchApp() {
                             }
                           }}
                           placeholder={`Message ${selectedAgent.title}...`}
-                          className="w-full bg-slate-800 border border-slate-700 rounded-2xl py-4 pl-4 pr-24 text-sm focus:outline-none focus:border-teal-500/50 transition-all resize-none scrollbar-hide"
+                          className="w-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl py-4 pl-4 pr-24 text-sm text-slate-900 dark:text-slate-200 focus:outline-none focus:border-teal-500/50 transition-all resize-none scrollbar-hide"
                         />
                         <div className="absolute right-2 bottom-2 flex items-center gap-1">
                           <button 
@@ -1631,6 +2046,7 @@ export default function VisionaryResearchApp() {
                             ref={fileInputRef} 
                             onChange={handleFileUpload} 
                             multiple 
+                            accept=".pdf,.docx,.doc,.xlsx,.xls,image/*,video/*"
                             className="hidden" 
                           />
                         </div>
@@ -1659,14 +2075,26 @@ export default function VisionaryResearchApp() {
                   </div>
 
                   <div className="mb-8">
-                    <h4 className="text-[10px] font-bold text-slate-600 uppercase tracking-widest mb-4">Visual Insights</h4>
-                    <VisualSummary data={null} />
+                    <h4 className="text-[10px] font-bold text-slate-600 uppercase tracking-widest mb-4">Knowledge Base</h4>
+                    <KnowledgeBase 
+                      items={knowledgeBase}
+                      onAddLink={handleAddKnowledgeLink}
+                      onUploadFile={() => kbFileInputRef.current?.click()}
+                      onRemoveItem={handleRemoveKnowledgeItem}
+                    />
+                    <input 
+                      type="file" 
+                      ref={kbFileInputRef} 
+                      className="hidden" 
+                      multiple 
+                      onChange={(e) => handleKnowledgeFileUpload(e.target.files)}
+                    />
                   </div>
 
                   <div>
                     <h4 className="text-[10px] font-bold text-slate-600 uppercase tracking-widest mb-4">Quick Actions</h4>
                     <div className="space-y-2">
-                      {selectedAgent.id === '07' ? (
+                      {selectedAgent.id === 'doc-prod' ? (
                         <>
                           {!isRecording ? (
                             <button 
@@ -1727,6 +2155,134 @@ export default function VisionaryResearchApp() {
                     </div>
                   </div>
                 </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* New Research Modal */}
+      <AnimatePresence>
+        {isNewResearchModalOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[60] flex items-center justify-center p-4 md:p-10 bg-slate-100/90 dark:bg-[#050505]/90 backdrop-blur-sm transition-colors duration-300"
+          >
+            <motion.div
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
+              className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 w-full max-w-2xl rounded-3xl overflow-hidden flex flex-col shadow-2xl shadow-black transition-colors duration-300"
+            >
+              <div className="p-8 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+                <div>
+                  <h3 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">New Research</h3>
+                  <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">Select keywords or add your own to start a new strategic report.</p>
+                </div>
+                <button 
+                  onClick={() => setIsNewResearchModalOpen(false)}
+                  className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors text-slate-500"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+
+              <div className="p-8 overflow-y-auto max-h-[60vh] space-y-8">
+                {/* Initial Keywords */}
+                <div>
+                  <h4 className="text-xs font-bold text-teal-600 dark:text-teal-400 uppercase tracking-widest mb-4">Initial Version Keywords</h4>
+                  <div className="flex flex-wrap gap-2">
+                    {INITIAL_KEYWORDS.map(keyword => (
+                      <button
+                        key={keyword}
+                        onClick={() => {
+                          if (!customKeywords.includes(keyword)) {
+                            setCustomKeywords([...customKeywords, keyword]);
+                          }
+                        }}
+                        className="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-teal-500/10 hover:text-teal-600 dark:hover:text-teal-400 rounded-lg text-sm text-slate-600 dark:text-slate-400 transition-all border border-transparent hover:border-teal-500/20"
+                      >
+                        {keyword}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Custom Keywords */}
+                <div>
+                  <h4 className="text-xs font-bold text-teal-600 dark:text-teal-400 uppercase tracking-widest mb-4">Your Research Focus</h4>
+                  <div className="flex gap-2 mb-4">
+                    <input 
+                      type="text"
+                      value={newKeywordInput}
+                      onChange={(e) => setNewKeywordInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && newKeywordInput.trim()) {
+                          setCustomKeywords([...customKeywords, newKeywordInput.trim()]);
+                          setNewKeywordInput('');
+                        }
+                      }}
+                      placeholder="Add a keyword or phrase..."
+                      className="flex-1 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500/50 dark:text-white transition-all"
+                    />
+                    <button 
+                      onClick={() => {
+                        if (newKeywordInput.trim()) {
+                          setCustomKeywords([...customKeywords, newKeywordInput.trim()]);
+                          setNewKeywordInput('');
+                        }
+                      }}
+                      className="p-3 bg-teal-500 text-black rounded-xl hover:bg-teal-400 transition-all"
+                    >
+                      <Plus className="w-5 h-5" />
+                    </button>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    {customKeywords.length === 0 ? (
+                      <p className="text-xs text-slate-500 italic">No keywords added yet. Click initial keywords or add your own above.</p>
+                    ) : (
+                      customKeywords.map((keyword, idx) => (
+                        <div 
+                          key={idx}
+                          className="px-3 py-1.5 bg-teal-500/10 text-teal-600 dark:text-teal-400 rounded-lg text-sm font-medium flex items-center gap-2 border border-teal-500/20"
+                        >
+                          {keyword}
+                          <button 
+                            onClick={() => setCustomKeywords(customKeywords.filter((_, i) => i !== idx))}
+                            className="hover:text-red-500 transition-colors"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-8 bg-slate-50 dark:bg-slate-900/50 border-t border-slate-200 dark:border-slate-800 flex justify-end gap-4">
+                <button 
+                  onClick={() => {
+                    setCustomKeywords([]);
+                    setIsNewResearchModalOpen(false);
+                  }}
+                  className="px-6 py-3 text-slate-600 dark:text-slate-400 font-bold hover:text-slate-900 dark:hover:text-white transition-colors"
+                >
+                  Cancel
+                </button>
+                <button 
+                  disabled={customKeywords.length === 0}
+                  onClick={() => {
+                    handleStartResearch(customKeywords);
+                  }}
+                  className="px-8 py-3 bg-teal-500 disabled:opacity-50 disabled:cursor-not-allowed text-black font-bold rounded-xl hover:bg-teal-400 transition-all shadow-lg shadow-teal-500/20 flex items-center gap-2"
+                >
+                  <Sparkles className="w-4 h-4" />
+                  Initialize Strategic Research
+                </button>
               </div>
             </motion.div>
           </motion.div>
